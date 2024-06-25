@@ -1,10 +1,18 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import styled from "styled-components";
 import axios from "axios";
 import { useStateProvider } from "../utils/StateProvider";
 import { reducerCases } from "../utils/Constants";
+import { useNavigate } from "react-router-dom";
+
+const GENIUS_API_PROXY_BASE_URL = "https://api.genius.com";
+const GENIUS_API_TOKEN = "tvtIZE2y6JZ1gOyNcENz26_TOIPpI19toTNsYgjHhlAkyK6rKxEXokpwislJXfrD"; // Replace with your Genius API token
+
 export default function CurrentTrack() {
   const [{ token, currentlyPlaying }, dispatch] = useStateProvider();
+  const [annotations, setAnnotations] = useState([]);
+  const navigate = useNavigate();
+
   useEffect(() => {
     const getCurrentTrack = async () => {
       const response = await axios.get(
@@ -30,10 +38,57 @@ export default function CurrentTrack() {
     };
     getCurrentTrack();
   }, [token, dispatch]);
+
+  useEffect(() => {
+    if (currentlyPlaying) {
+      fetchAnnotations(currentlyPlaying.name, currentlyPlaying.artists.join(" "));
+    }
+  }, [currentlyPlaying]);
+
+  const fetchAnnotations = async (songTitle, artistName) => {
+    try {
+      const searchResponse = await axios.get(
+        `${GENIUS_API_PROXY_BASE_URL}/search?q=${encodeURIComponent(songTitle + " " + artistName)}`,
+        {
+          headers: {
+            Authorization: `Bearer ${GENIUS_API_TOKEN}`,
+          },
+        }
+      );
+
+      if (searchResponse.data.response.hits.length > 0) {
+        const songId = searchResponse.data.response.hits[0].result.id;
+
+        const annotationResponse = await axios.get(
+          `${GENIUS_API_PROXY_BASE_URL}/referents?song_id=${songId}`,
+          {
+            headers: {
+              Authorization: `Bearer ${GENIUS_API_TOKEN}`,
+            },
+          }
+        );
+
+        const annotations = annotationResponse.data.response.referents.map(referent => referent.annotations).flat();
+        setAnnotations(annotations);
+
+        console.log("Annotations:", annotations);
+      } else {
+        console.log("Song not found on Genius.");
+      }
+    } catch (error) {
+      console.error("Error fetching data from Genius:", error);
+    }
+  };
+
+  const handleTrackClick = () => {
+    console.log("Navigating to track info page with data:", { currentlyPlaying, annotations });
+    navigate('/track-info', { state: { currentlyPlaying, annotations } });
+  };
+
   return (
     <Container>
       {currentlyPlaying && (
-        <div className="track">
+        <div className="track" onClick={handleTrackClick}>
           <div className="track__image">
             <img src={currentlyPlaying.image} alt="currentlyPlaying" />
           </div>
@@ -54,6 +109,7 @@ const Container = styled.div`
     display: flex;
     align-items: center;
     gap: 1rem;
+    cursor: pointer;
     &__image {
     }
     &__info {
